@@ -16,3 +16,10 @@ catalogs are private consumer inputs and are never part of this package.
 
 Consumers retain the exercised DSP tests and compare AOT behavior with the
 functioning LLE reference before accepting new execution paths.
+
+`native/CMakeLists.txt` provides the extracted `gcnllr_add_native_dsp` engine
+contract from gcnllr c055532. HLE requires consumer-supplied pinned donor targets
+and `GC_DSP_DONOR_HOST_DIR`; AOT requires a local generated catalog. The explicit
+`interpreter-development` provider assists discovery and cannot qualify static
+execution. These sources retain their imported licenses. Engine extraction does
+not itself establish Wii DMA, audio or native execution compatibility.
