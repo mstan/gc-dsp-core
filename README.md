@@ -23,3 +23,12 @@ and `GC_DSP_DONOR_HOST_DIR`; AOT requires a local generated catalog. The explici
 `interpreter-development` provider assists discovery and cannot qualify static
 execution. These sources retain their imported licenses. Engine extraction does
 not itself establish Wii DMA, audio or native execution compatibility.
+
+The HLE adapter accepts the engine configuration's console and MEM2 bank. Its
+build-derived donor bridge preserves the existing GameCube creator and passes
+explicit Wii selection to DSPHLE. Host spans are bounded to the selected physical
+memory bank and use the consumer's observation/write callbacks. Unrecognized
+microcode is rejected instead of selecting a generic audio implementation.
+Consumers must qualify the actual task protocol, interrupts and PCM against
+their separate LLE build; ROM-mail and memory-bank unit checks alone do not
+establish title compatibility.
