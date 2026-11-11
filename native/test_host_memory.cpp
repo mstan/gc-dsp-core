@@ -18,6 +18,8 @@ int main() {
         require(gcn_dsp_hle_pointer(c,0xd0000010,4)==two,"DSP MEM2 alias identity");
         require(host.prepared[1].address==0x10000010 && host.written[1].address==0x10000010,"DSP callback lost physical bank");
         require(host.prepared[1].write && host.written[1].size==4,"DSP pointer notifications changed");
+        const auto writes=host.written.size();
+        require(gcn_dsp_hle_pointer(c,0x90000010,4,false)==two && !host.prepared.back().write && host.written.size()==writes,"DSP read invalidated host memory");
         auto reject=[&](uint32_t a,uint32_t n){bool failed=false;try{(void)gcn_dsp_hle_pointer(c,a,n);}catch(const std::runtime_error&){failed=true;}require(failed,"DSP unmapped span accepted");};
         reject(0x1000003f,2);reject(0x10000041,0);reject(0x08000000,4);
         host.allow=false;reject(0x10000010,4);host.allow=true;

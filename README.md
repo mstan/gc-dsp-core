@@ -29,6 +29,9 @@ build-derived donor bridge preserves the existing GameCube creator and passes
 explicit Wii selection to DSPHLE. Host spans are bounded to the selected physical
 memory bank and use the consumer's observation/write callbacks. Unrecognized
 microcode is rejected instead of selecting a generic audio implementation.
+Wii accelerator samples use MEM1/MEM2 rather than GameCube ARAM; explicit reads
+do not publish writes. Supplied coefficient-ROM bytes feed the donor's polyphase
+resampler directly, avoiding a silent change to linear interpolation.
 Consumers must qualify the actual task protocol, interrupts and PCM against
 their separate LLE build; ROM-mail and memory-bank unit checks alone do not
 establish title compatibility.

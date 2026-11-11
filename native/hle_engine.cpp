@@ -19,7 +19,7 @@ static GcnDspEngine* owner;
 // explicit console selection without exposing donor C++ objects across ABI.
 extern "C" BluewakeDspAdapter* bluewake_dsp_adapter_create_hle_console(
     void*,BluewakeDspGuestPointerFn,uint8_t*,uint32_t,BluewakeDspTimebaseFn,
-    BluewakeDspInterruptFn,int wii);
+    BluewakeDspInterruptFn,int wii,BluewakeDspGuestPointerFn read_pointer,const uint8_t*,uint32_t);
 static bool ready(const GcnDspEngine* e) {return e && e==owner && e->dsp && !e->failed;}
 template<class F> static bool checked(GcnDspEngine* e,F&& fn) {
     if(!ready(e))return false;
@@ -35,6 +35,11 @@ static uint8_t* pointer(void* user,uint32_t address,uint32_t size) {
     try{return gcn_dsp_hle_pointer(e.config,address,size);}
     catch(...){e.failed=true;throw;}
 }
+static uint8_t* read_pointer(void* user,uint32_t address,uint32_t size) {
+    auto& e=*static_cast<GcnDspEngine*>(user);
+    try{return gcn_dsp_hle_pointer(e.config,address,size,false);}
+    catch(...){e.failed=true;throw;}
+}
 static uint64_t timebase(void* user) {
     const auto& c=static_cast<GcnDspEngine*>(user)->config;return c.timebase(c.user);
 }
@@ -44,10 +49,11 @@ static void interrupt(void* user) {
 extern "C" GcnDspEngine* gcn_dsp_engine_create(const GcnDspEngineConfig* c) {
     if(!c || owner || !c->mem1 || !c->mem1_size || !c->aram || c->aram_size!=0x1000000u ||
        (c->wii && (!c->mem2 || !c->mem2_size)) ||
+       (c->coef_size && (!c->coef || c->coef_size!=4096)) || (c->coef && c->coef_size!=4096) ||
        !c->prepare || !c->written || !c->timebase || !c->interrupt)return nullptr;
     auto* e=new(std::nothrow) GcnDspEngine;if(!e)return nullptr;e->config=*c;
     try {
-        e->dsp=bluewake_dsp_adapter_create_hle_console(e,pointer,c->aram,c->aram_size,timebase,interrupt,c->wii?1:0);
+        e->dsp=bluewake_dsp_adapter_create_hle_console(e,pointer,c->aram,c->aram_size,timebase,interrupt,c->wii?1:0,read_pointer,c->coef,c->coef_size);
         if(!e->dsp || !bluewake_dsp_adapter_is_hle(e->dsp) || e->failed)
             throw std::runtime_error("DSP HLE initialization failed");
         owner=e;return e;
