@@ -8,6 +8,9 @@
 #include <Core/HW/SystemTimers.h>
 #include <Core/System.h>
 #include <cstdio>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <stdexcept>
 #include <vector>
 void need(bool b,const char* why){if(!b)throw std::runtime_error(why);}
@@ -20,21 +23,48 @@ struct CoefficientProbe: DSP::HLE::AXUCode {
         need(LoadResamplingCoefficients(true,checksum),"Caller DROM checksum roundtrip failed");
         need(!LoadResamplingCoefficients(true,checksum^1),"Mismatched DROM silently loaded different coefficients");
     }
+    void check_without_coefficients() {
+        need(!LoadResamplingCoefficients(false,0) && !m_coeffs_checksum,"Resource-free HLE discovered ambient coefficients");
+        need(!LoadResamplingCoefficients(true,0),"Resource-free HLE accepted a saved polyphase profile");
+    }
 };
-void exercise(bool wii) {
+struct AmbientCoefficients {
+    std::filesystem::path previous=std::filesystem::current_path(),directory;
+    AmbientCoefficients() {
+        directory=std::filesystem::temp_directory_path()/("gcn-dsp-hle-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        need(std::filesystem::create_directory(directory),"Cannot create coefficient isolation fixture");
+        try {
+            std::vector<char> bytes(4096);bytes[6]=0x12;bytes[7]=0x34;
+            std::ofstream file(directory/"dsp_coef.bin",std::ios::binary);file.write(bytes.data(),bytes.size());file.close();
+            need(bool(file),"Cannot write ambient coefficient fixture");std::filesystem::current_path(directory);
+        } catch(...) {clean();throw;}
+    }
+    void clean() noexcept {
+        std::error_code error;std::filesystem::current_path(previous,error);
+        std::filesystem::remove(directory/"dsp_coef.bin",error);std::filesystem::remove(directory,error);
+    }
+    ~AmbientCoefficients(){clean();}
+};
+void exercise(bool wii,bool supplied_coefficients=true) {
     std::vector<uint8_t> mem1(64),mem2(64),aram(0x1000000),coefficients(4096);Host host;GcnDspEngineConfig c{};
     c.mem1=mem1.data();c.mem1_size=mem1.size();c.mem2=mem2.data();c.mem2_size=mem2.size();
     c.aram=aram.data();c.aram_size=aram.size();c.wii=wii;c.user=&host;
-    coefficients[6]=0x12;coefficients[7]=0x34;c.coef=coefficients.data();c.coef_size=coefficients.size();
+    coefficients[6]=0x12;coefficients[7]=0x34;
+    if(supplied_coefficients){c.coef=coefficients.data();c.coef_size=coefficients.size();}
     c.prepare=[](void* p,uint32_t a,uint32_t,bool writing){auto& h=*static_cast<Host*>(p);++h.prepared;h.address=a;h.writing=writing;return true;};
     c.written=[](void* p,uint32_t a,uint32_t){auto& h=*static_cast<Host*>(p);++h.written;h.address=a;return true;};
     c.timebase=[](void*)->uint64_t{return 0;};c.interrupt=[](void*){};
+    auto invalid=c;invalid.coef=nullptr;invalid.coef_size=4096;
+    need(!gcn_dsp_engine_create(&invalid),"Null coefficient pointer accepted a nonzero size");
+    invalid=c;invalid.coef=coefficients.data();invalid.coef_size=0;
+    need(!gcn_dsp_engine_create(&invalid),"Coefficient pointer accepted a zero size");
     auto* engine=gcn_dsp_engine_create(&c);need(engine!=nullptr,"Native DSP HLE create failed");
     try {
         need(DSP::Host::IsWiiHost()==wii,"DSP donor received wrong console");
         need(gcn_dsp_engine_create(&c)==nullptr,"Concurrent DSP HLE owner accepted");
         auto& system=Core::System::GetInstance();auto& dsp=system.GetDSP();
-        {DSP::HLE::DSPHLE fixture(system);CoefficientProbe probe(&fixture);probe.check();}
+        {DSP::HLE::DSPHLE fixture(system);CoefficientProbe probe(&fixture);
+            if(supplied_coefficients)probe.check();else probe.check_without_coefficients();}
         mem1[9]=0x42;mem2[9]=0x73;aram[9]=0x11;
         need(dsp.ReadARAM(9)==(wii?0x42:0x11),"DSP accelerator read wrong console bank");
         if(wii) {
@@ -66,4 +96,6 @@ void exercise(bool wii) {
     }catch(...){gcn_dsp_engine_destroy(engine);throw;}
     gcn_dsp_engine_destroy(engine);
 }
-int main(){try{exercise(false);exercise(true);std::puts("GC/Wii DSP HLE ROM, memory-bank task and strict-unknown checks passed");return 0;}catch(const std::exception& e){std::fprintf(stderr,"%s\n",e.what());return 1;}}
+int main(){try{exercise(false);exercise(true);{AmbientCoefficients ambient;exercise(false,false);exercise(true,false);}
+    std::puts("GC/Wii DSP HLE caller-coefficient/resource-free ROM, memory-bank task and strict-unknown checks passed");return 0;
+}catch(const std::exception& e){std::fprintf(stderr,"%s\n",e.what());return 1;}}

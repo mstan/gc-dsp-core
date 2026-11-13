@@ -32,6 +32,10 @@ microcode is rejected instead of selecting a generic audio implementation.
 Wii accelerator samples use MEM1/MEM2 rather than GameCube ARAM; explicit reads
 do not publish writes. Supplied coefficient-ROM bytes feed the donor's polyphase
 resampler directly, avoiding a silent change to linear interpolation.
+An absent caller coefficient buffer deliberately selects the existing linear
+resampler without searching ambient filesystem paths. This resource-free HLE
+profile needs separate audio qualification. The LLE engines still require both
+original DSP ROM and coefficient data.
 Consumers must qualify the actual task protocol, interrupts and PCM against
 their separate LLE build; ROM-mail and memory-bank unit checks alone do not
 establish title compatibility.
