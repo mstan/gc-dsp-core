@@ -6,6 +6,14 @@ include("${CMAKE_CURRENT_LIST_DIR}/adapt_hle.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/adapt_console.cmake")
 set(GC_DSP_DONOR_HOST_DIR "" CACHE PATH "Pinned native DSP donor host headers")
 
+if(BUILD_TESTING AND NOT TARGET gcn_dsp_capture_test)
+  add_executable(gcn_dsp_capture_test "${_gcn_dsp_source}/test_capture.cpp"
+    "${_gcn_dsp_root}/Core/DSP/DSPCaptureLogger.cpp")
+  target_include_directories(gcn_dsp_capture_test PRIVATE "${_gcn_dsp_root}")
+  target_compile_features(gcn_dsp_capture_test PRIVATE cxx_std_20)
+  add_test(NAME gcn_dsp_capture_test COMMAND gcn_dsp_capture_test)
+endif()
+
 function(gcnllr_add_native_dsp target provider catalog)
   if(TARGET "${target}")
     message(FATAL_ERROR "DSP target already exists: ${target}")

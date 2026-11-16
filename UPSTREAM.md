@@ -1,5 +1,15 @@
 # Vendored DSP LLE core
 
+The extracted PCAP capture implementation now includes the matching
+`DSPCaptureLogger.cpp` and `Common/PcapFile.cpp` behavior from the same Dolphin
+revision. The PCAP writer is compiled in the capture translation unit so both
+legacy and native LLE source lists include it. `Common/IOFile.h` is a small
+owning stdio adapter, with UTF-8 Windows paths and explicit open/write errors.
+The capture destructor is out of line so callers need not include PCAP internals.
+DMA packets use a sized buffer rather than the upstream fixed 64 KiB buffer;
+PCAP records honor the declared 65535-byte snapshot limit while retaining the
+original packet length. HLE donor targets do not compile these sources.
+
 `dsp/` is Dolphin's GameCube/Wii DSP low-level-emulation **interpreter** core,
 vendored from `oracle/dolphin/Source/Core/Core/DSP/` (GPL-2.0-or-later, which we
 carry under this project's GPL-3.0). It runs the real DSP firmware
