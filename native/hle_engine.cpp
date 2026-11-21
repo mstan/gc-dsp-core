@@ -62,6 +62,9 @@ extern "C" void gcn_dsp_engine_destroy(GcnDspEngine* e) {
     if(!e || e!=owner)return;
     bluewake_dsp_adapter_destroy(e->dsp);owner=nullptr;delete e;
 }
+extern "C" bool gcn_dsp_engine_update_pending(const GcnDspEngine* e) {
+    return !ready(e) || bluewake_dsp_adapter_update_pending(e->dsp);
+}
 extern "C" bool gcn_dsp_engine_run(GcnDspEngine* e,uint32_t cycles) {
     return checked(e,[&]{
         while(cycles) {

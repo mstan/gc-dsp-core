@@ -30,6 +30,8 @@ typedef struct {
 } GcnDspEngineStats;
 GcnDspEngine* gcn_dsp_engine_create(const GcnDspEngineConfig*);
 void gcn_dsp_engine_destroy(GcnDspEngine*);
+/* Whether the selected engine can observe its next scheduled update. */
+bool gcn_dsp_engine_update_pending(const GcnDspEngine*);
 bool gcn_dsp_engine_run(GcnDspEngine*,uint32_t dsp_cycles);
 bool gcn_dsp_engine_read_control(GcnDspEngine*,uint16_t*);
 bool gcn_dsp_engine_write_control(GcnDspEngine*,uint16_t);

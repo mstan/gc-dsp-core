@@ -68,6 +68,9 @@ extern "C" void gcn_dsp_engine_destroy(GcnDspEngine* engine) {
     if(engine->core && engine->core->GetAot())engine->core->GetAot()->Report();
     engine->core.reset();gcn_dsp_owner=nullptr;delete engine;
 }
+extern "C" bool gcn_dsp_engine_update_pending(const GcnDspEngine*) {
+    return true;
+}
 extern "C" bool gcn_dsp_engine_run(GcnDspEngine* engine,uint32_t cycles) {
     return checked(engine,[&]{
         while(cycles) {
