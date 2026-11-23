@@ -2,6 +2,7 @@
 // Device-independent port of vendored Dolphin dsp_lle_c.cpp. Build-selected
 // engine; no donor CPU, synthetic boot state, poll clock or process exit.
 #include "engine_internal.hpp"
+#include "src/dsp_core_state.hpp"
 #include "Core/DSP/DSPAccelerator.h"
 #include "Core/DSP/DSPTables.h"
 #include "Core/DSP/Interpreter/DSPInterpreter.h"
@@ -9,6 +10,8 @@
 #include "Core/DSP/Aot/Aot.h"
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <limits>
 #include <new>
 #include <stdexcept>
@@ -114,4 +117,27 @@ extern "C" GcnDspEngineStats gcn_dsp_engine_stats(const GcnDspEngine* engine) {
         result.native_instructions=stats.native;result.misses=stats.misses;result.bindings=stats.bindings;
     }else result.provider=3;
     result.failed|=engine->failed;return result;
+}
+
+extern "C" bool gcn_dsp_engine_capture(GcnDspEngine* engine,uint8_t** bytes,size_t* size) {
+    if(!bytes || !size)return false;
+    *bytes=nullptr;*size=0;
+    auto* snapshot=static_cast<GcnDspLleSnapshot*>(std::malloc(sizeof(GcnDspLleSnapshot)));
+    if(!snapshot)return false;
+    bool captured=false;
+    if(!checked(engine,[&]{captured=gcn_dsp_core_capture(engine->core.get(),snapshot,0);}) || !captured) {
+        std::free(snapshot);
+        return false;
+    }
+    *bytes=reinterpret_cast<uint8_t*>(snapshot);
+    *size=sizeof(*snapshot);
+    return true;
+}
+
+extern "C" bool gcn_dsp_engine_restore(GcnDspEngine* engine,const uint8_t* bytes,size_t size) {
+    if(!bytes || size!=sizeof(GcnDspLleSnapshot))return false;
+    GcnDspLleSnapshot snapshot;
+    std::memcpy(&snapshot,bytes,sizeof(snapshot));
+    bool restored=false;
+    return checked(engine,[&]{restored=gcn_dsp_core_restore(engine->core.get(),&snapshot);}) && restored;
 }

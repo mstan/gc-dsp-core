@@ -21,7 +21,8 @@ function(gcnllr_add_native_dsp target provider catalog)
     file(GLOB _core CONFIGURE_DEPENDS "${_gcn_dsp_root}/Core/DSP/*.cpp"
       "${_gcn_dsp_root}/Core/DSP/Interpreter/*.cpp")
     add_library("${target}" STATIC ${_core} "${_gcn_dsp_root}/Core/DSP/Aot/Aot.cpp"
-      "${_gcn_dsp_source}/lle_engine.cpp" "${_gcn_dsp_source}/lle_host.cpp")
+      "${_gcn_dsp_source}/lle_engine.cpp" "${_gcn_dsp_source}/lle_host.cpp"
+      "${_gcn_dsp_root}/src/dsp_core_state.cpp")
     target_include_directories("${target}" PRIVATE "${_gcn_dsp_source}" "${_gcn_dsp_root}")
     if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
       target_compile_options("${target}" PRIVATE /FICommon/CommonTypes.h /FICommon/Logging/Log.h /FICommon/Assert.h)

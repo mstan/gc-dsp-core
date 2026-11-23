@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #pragma once
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #ifdef __cplusplus
 extern "C" {
@@ -41,6 +42,11 @@ bool gcn_dsp_engine_write_mail(GcnDspEngine*,bool low,uint16_t);
  * low half without popping it, so the common interface never promises it. */
 uint16_t gcn_dsp_engine_peek_mail_high(const GcnDspEngine*,bool cpu);
 GcnDspEngineStats gcn_dsp_engine_stats(const GcnDspEngine*);
+/* Call on the device owner thread after settling pending owner work. The
+ * byte buffer returned on success belongs to the caller. MEM1 and ARAM
+ * remain caller-owned and have to be saved alongside these bytes. */
+bool gcn_dsp_engine_capture(GcnDspEngine*,uint8_t** bytes,size_t* size);
+bool gcn_dsp_engine_restore(GcnDspEngine*,const uint8_t* bytes,size_t size);
 #ifdef __cplusplus
 }
 #endif

@@ -6,6 +6,9 @@
 #include <limits>
 #include <new>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <memory>
 #include <stdexcept>
 struct GcnDspEngine {
     GcnDspEngineConfig config{};
@@ -109,4 +112,55 @@ extern "C" GcnDspEngineStats gcn_dsp_engine_stats(const GcnDspEngine* e) {
     // meaningful HLE counter. Do not relabel native host calls as guest DSP.
     if(e && e==owner && e->dsp)s.control=bluewake_dsp_adapter_read_control(e->dsp);
     return s;
+}
+
+namespace {
+struct HleSnapshot {
+    uint32_t payload_size;
+    uint16_t mail_high;
+    uint16_t mail_high_written;
+};
+using StateBytes=std::unique_ptr<uint8_t,decltype(&std::free)>;
+}
+
+extern "C" bool gcn_dsp_engine_capture(GcnDspEngine* engine,uint8_t** bytes,size_t* size) {
+    if(!bytes || !size)return false;
+    *bytes=nullptr;*size=0;
+    if(!ready(engine))return false;
+    try {
+        uint8_t* raw=nullptr;
+        const size_t payload_size=bluewake_dsp_adapter_save_state(engine->dsp,&raw);
+        const StateBytes payload(raw,std::free);
+        if(!payload_size || payload_size>UINT32_MAX || payload_size>SIZE_MAX-sizeof(HleSnapshot))return false;
+        const HleSnapshot header{uint32_t(payload_size),engine->mail_high,uint16_t(engine->mail_high_written)};
+        auto* result=static_cast<uint8_t*>(std::malloc(sizeof(header)+payload_size));
+        if(!result)return false;
+        std::memcpy(result,&header,sizeof(header));
+        std::memcpy(result+sizeof(header),payload.get(),payload_size);
+        *bytes=result;*size=sizeof(header)+payload_size;
+        return true;
+    }catch(const std::exception&) {return false;}
+}
+
+extern "C" bool gcn_dsp_engine_restore(GcnDspEngine* engine,const uint8_t* bytes,size_t size) {
+    if(!ready(engine) || !bytes || size<sizeof(HleSnapshot))return false;
+    HleSnapshot header;
+    std::memcpy(&header,bytes,sizeof(header));
+    if(!header.payload_size || header.payload_size!=size-sizeof(header) || header.mail_high_written>1)return false;
+    uint8_t* raw=nullptr;
+    size_t original_size=0;
+    try {original_size=bluewake_dsp_adapter_save_state(engine->dsp,&raw);}
+    catch(const std::exception&) {return false;}
+    const StateBytes original(raw,std::free);
+    if(!original_size)return false;
+    try {
+        if(bluewake_dsp_adapter_load_state(engine->dsp,bytes+sizeof(header),header.payload_size)) {
+            engine->mail_high=header.mail_high;
+            engine->mail_high_written=header.mail_high_written!=0;
+            return true;
+        }
+    }catch(const std::exception&) {}
+    try {engine->failed=!bluewake_dsp_adapter_load_state(engine->dsp,original.get(),original_size);}
+    catch(const std::exception&) {engine->failed=true;}
+    return false;
 }
