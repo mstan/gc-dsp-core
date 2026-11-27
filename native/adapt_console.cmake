@@ -27,6 +27,17 @@ function(gcnllr_adapt_dsp_console target)
     "${GC_DSP_DONOR_HOST_DIR}/dsp_hle_backend.h")
   file(READ "${GC_DSP_DONOR_HOST_DIR}/dsp_hle_backend.h" _header)
   _gcn_dsp_replace(_header "HLE console declaration" "BluewakeDspInterruptFn interrupt);" "BluewakeDspInterruptFn interrupt, bool wii = false, BluewakeDspGuestPointerFn read_pointer = nullptr, const std::uint8_t* coefficients = nullptr, std::uint32_t coefficient_size = 0);")
+  # Retain the qualified GameCube pending-work contract for older Wii host
+  # donors without replacing their CPU/runtime sources. New donors keep their
+  # existing implementation; the exact21-line owner extension is composed only
+  # when its declaration is absent.
+  set(_bridge_pending FALSE)
+  string(FIND "${_header}" "bool update_pending() const;" _pending_at)
+  if(_pending_at EQUAL -1)
+    set(_bridge_pending TRUE)
+    _gcn_dsp_replace(_header "HLE pending declaration" "  int run_cycles(int cycles);"
+      "  int run_cycles(int cycles);\n  bool update_pending() const;")
+  endif()
   file(CONFIGURE OUTPUT "${_output}/dsp_hle_backend.h" CONTENT "${_header}" @ONLY)
   get_target_property(_sources "${target}" SOURCES)
   set(_adapted)
@@ -46,6 +57,29 @@ function(gcnllr_adapt_dsp_console target)
       _gcn_dsp_replace(_text "HLE console clock" "return 486000000u;" "return gcnllr_dsp_hle_wii ? 729000000u : 486000000u;")
       _gcn_dsp_replace(_text "HLE console initialization" "return m_impl->hle.Initialize(false, false);" "gcnllr_dsp_hle_wii = wii;\n  gcnllr_dsp_hle_drom = coefficients;\n  gcnllr_dsp_hle_drom_size = coefficient_size;\n  return m_impl->hle.Initialize(wii, false);")
       _gcn_dsp_replace(_text "HLE host flag lifetime" "g_host = HleHost{};\n}" "g_host = HleHost{};\n  gcnllr_dsp_hle_wii = false;\n  gcnllr_dsp_hle_drom = nullptr;\n  gcnllr_dsp_hle_drom_size = 0;\n}")
+      if(_bridge_pending)
+        _gcn_dsp_replace(_text "HLE pending storage" "  bool interrupt_pending = false;"
+          "  bool interrupt_pending = false;\n  bool update_requested = true;")
+        _gcn_dsp_replace(_text "HLE pending query/update" "int HleBackend::run_cycles(int cycles)\n{"
+[=[bool HleBackend::update_pending() const
+{
+  // The pinned HLE update methods either send a resume mail after a guest
+  // ucode upload, reassert a queued mail, or do nothing. Preserve the next
+  // update slot after a write and any interrupt deferred by a mailbox read.
+  return g_host.update_requested || g_host.interrupt_pending ||
+         m_impl->hle.AccessMailHandler().HasPending();
+}
+
+int HleBackend::run_cycles(int cycles)
+{
+  g_host.update_requested = false;]=])
+        _gcn_dsp_replace(_text "HLE control schedules update" "void HleBackend::write_control(std::uint16_t value)\n{"
+          "void HleBackend::write_control(std::uint16_t value)\n{\n  g_host.update_requested = true;")
+        _gcn_dsp_replace(_text "HLE mail schedules update" "  m_impl->hle.DSP_WriteMailBoxHigh(true, static_cast<u16>(value >> 16));"
+          "  g_host.update_requested = true;\n  m_impl->hle.DSP_WriteMailBoxHigh(true, static_cast<u16>(value >> 16));")
+        _gcn_dsp_replace(_text "HLE restore schedules update" "  return read.IsReadMode() && read_ptr == data + size;"
+          "  g_host.update_requested = true;\n  return read.IsReadMode() && read_ptr == data + size;")
+      endif()
       set(_text "#include <cstdint>\nbool gcnllr_dsp_hle_wii = false;\nconst std::uint8_t* gcnllr_dsp_hle_drom = nullptr;\nstd::uint32_t gcnllr_dsp_hle_drom_size = 0;\n${_text}")
     elseif(_name STREQUAL "dsp_adapter.cpp")
       file(READ "${_source}" _text)
@@ -61,6 +95,14 @@ function(gcnllr_adapt_dsp_console target)
       _gcn_dsp_replace(_creator "C console creator" "BluewakeDspInterruptFn interrupt)" "BluewakeDspInterruptFn interrupt, int wii, BluewakeDspGuestPointerFn read_pointer, const uint8_t* coefficients, uint32_t coefficient_size)")
       _gcn_dsp_replace(_creator "C console forwarding" "interrupt))" "interrupt, wii != 0, read_pointer, coefficients, coefficient_size))")
       string(APPEND _text "\n${_creator}\n")
+      if(_bridge_pending)
+        string(APPEND _text [=[
+extern "C" int bluewake_dsp_adapter_update_pending(const BluewakeDspAdapter* adapter)
+{
+  return adapter != nullptr && (!adapter->hle || adapter->hle->update_pending());
+}
+]=])
+      endif()
     else()
       list(APPEND _adapted "${_source}")
       continue()

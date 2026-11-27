@@ -23,6 +23,9 @@ static GcnDspEngine* owner;
 extern "C" BluewakeDspAdapter* bluewake_dsp_adapter_create_hle_console(
     void*,BluewakeDspGuestPointerFn,uint8_t*,uint32_t,BluewakeDspTimebaseFn,
     BluewakeDspInterruptFn,int wii,BluewakeDspGuestPointerFn read_pointer,const uint8_t*,uint32_t);
+// Both qualified donor generations use this C boundary. Older headers gain
+// its implementation through the build-derived adapter below.
+extern "C" int bluewake_dsp_adapter_update_pending(const BluewakeDspAdapter*);
 static bool ready(const GcnDspEngine* e) {return e && e==owner && e->dsp && !e->failed;}
 template<class F> static bool checked(GcnDspEngine* e,F&& fn) {
     if(!ready(e))return false;
