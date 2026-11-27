@@ -8,6 +8,7 @@
 #include <Core/HW/SystemTimers.h>
 #include <Core/System.h>
 #include <cstdio>
+#include <cstdlib>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -86,6 +87,15 @@ void exercise(bool wii,bool supplied_coefficients=true) {
         need(mail(0x1234abcd),"DSP ROM ping rejected");need(read()==0xfeee9234,"DSP ROM high-half/status echo changed");
         need(gcn_dsp_engine_run(engine,1024),"DSP ROM update failed");
         const auto stats=gcn_dsp_engine_stats(engine);need(stats.provider==1 && !stats.failed && !stats.interpreter_instructions && !stats.misses,"DSP HLE silently executed interpreter");
+        need(gcn_dsp_engine_write_mail(engine,false,0x9234),"Snapshot partial mail rejected");
+        uint8_t* snapshot=nullptr;size_t snapshot_size=0;
+        need(gcn_dsp_engine_capture(engine,&snapshot,&snapshot_size) && snapshot && snapshot_size,"HLE snapshot capture failed");
+        need(gcn_dsp_engine_write_mail(engine,false,0x4567),"Snapshot mutation failed");
+        const bool restored=gcn_dsp_engine_restore(engine,snapshot,snapshot_size);
+        const bool rejected=!gcn_dsp_engine_restore(engine,snapshot,snapshot_size-1);
+        std::free(snapshot);
+        need(restored && rejected && (gcn_dsp_engine_peek_mail_high(engine,true)&0x7fffu)==0x1234,"HLE snapshot partial-mail/invalid-state contract changed");
+        need(gcn_dsp_engine_update_pending(engine),"HLE pending-event update failed");
         auto& bank=wii?mem2:mem1;bank[8]=0x12;bank[9]=0x34;bank[10]=0x56;bank[11]=0x78;
         auto parameter=[&](uint32_t command,uint32_t value){need(mail(command) && mail(value),"DSP ROM task parameter rejected");};
         parameter(0x80f3a001,wii?0x90000008:0x80000008);parameter(0x80f3a002,4);parameter(0x80f3b002,0);parameter(0x80f3c002,0);
