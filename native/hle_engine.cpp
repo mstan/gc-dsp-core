@@ -2,6 +2,7 @@
 // Existing BlueWake/Dolphin HLE behind the same build-selected engine contract.
 #include "gcnllr/native_dsp.h"
 #include "dsp_adapter_c.h"
+#include "host_memory.hpp"
 #include <algorithm>
 #include <limits>
 #include <new>
@@ -17,6 +18,14 @@ struct GcnDspEngine {
     bool mail_high_written{},failed{};
 };
 static GcnDspEngine* owner;
+// Build-derived donor bridge retains the existing GameCube creator and adds
+// explicit console selection without exposing donor C++ objects across ABI.
+extern "C" BluewakeDspAdapter* bluewake_dsp_adapter_create_hle_console(
+    void*,BluewakeDspGuestPointerFn,uint8_t*,uint32_t,BluewakeDspTimebaseFn,
+    BluewakeDspInterruptFn,int wii,BluewakeDspGuestPointerFn read_pointer,const uint8_t*,uint32_t);
+// Both qualified donor generations use this C boundary. Older headers gain
+// its implementation through the build-derived adapter below.
+extern "C" int bluewake_dsp_adapter_update_pending(const BluewakeDspAdapter*);
 static bool ready(const GcnDspEngine* e) {return e && e==owner && e->dsp && !e->failed;}
 template<class F> static bool checked(GcnDspEngine* e,F&& fn) {
     if(!ready(e))return false;
@@ -28,18 +37,14 @@ template<class F> static bool checked(GcnDspEngine* e,F&& fn) {
     }
 }
 static uint8_t* pointer(void* user,uint32_t address,uint32_t size) {
-    auto& e=*static_cast<GcnDspEngine*>(user);const auto& c=e.config;
-    const uint32_t offset=address&0x1fffffffu;
-    // The donor lends the same pointer for both directions. Conservatively
-    // preserve its bytes and announce possible writes before returning it.
-    if(offset>c.mem1_size || size>c.mem1_size-offset ||
-       !c.prepare(c.user,offset,size,true) || !c.written(c.user,offset,size)) {
-        e.failed=true;
-        // ROM/mixer helpers can assume a non-null pointer. Stop within their
-        // C++ stack; checked() catches before returning through our C ABI.
-        throw std::runtime_error("DSP MEM1 observation/write rejected");
-    }
-    return c.mem1+offset;
+    auto& e=*static_cast<GcnDspEngine*>(user);
+    try{return gcn_dsp_hle_pointer(e.config,address,size);}
+    catch(...){e.failed=true;throw;}
+}
+static uint8_t* read_pointer(void* user,uint32_t address,uint32_t size) {
+    auto& e=*static_cast<GcnDspEngine*>(user);
+    try{return gcn_dsp_hle_pointer(e.config,address,size,false);}
+    catch(...){e.failed=true;throw;}
 }
 static uint64_t timebase(void* user) {
     const auto& c=static_cast<GcnDspEngine*>(user)->config;return c.timebase(c.user);
@@ -48,11 +53,13 @@ static void interrupt(void* user) {
     const auto& c=static_cast<GcnDspEngine*>(user)->config;c.interrupt(c.user);
 }
 extern "C" GcnDspEngine* gcn_dsp_engine_create(const GcnDspEngineConfig* c) {
-    if(!c || c->wii || owner || !c->mem1 || !c->mem1_size || !c->aram || c->aram_size!=0x1000000u ||
+    if(!c || owner || !c->mem1 || !c->mem1_size || !c->aram || c->aram_size!=0x1000000u ||
+       (c->wii && (!c->mem2 || !c->mem2_size)) ||
+       (c->coef_size && (!c->coef || c->coef_size!=4096)) || (c->coef && c->coef_size!=4096) ||
        !c->prepare || !c->written || !c->timebase || !c->interrupt)return nullptr;
     auto* e=new(std::nothrow) GcnDspEngine;if(!e)return nullptr;e->config=*c;
     try {
-        e->dsp=bluewake_dsp_adapter_create_hle(e,pointer,c->aram,c->aram_size,timebase,interrupt);
+        e->dsp=bluewake_dsp_adapter_create_hle_console(e,pointer,c->aram,c->aram_size,timebase,interrupt,c->wii?1:0,read_pointer,c->coef,c->coef_size);
         if(!e->dsp || !bluewake_dsp_adapter_is_hle(e->dsp) || e->failed)
             throw std::runtime_error("DSP HLE initialization failed");
         owner=e;return e;
