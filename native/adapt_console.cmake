@@ -80,6 +80,12 @@ int HleBackend::run_cycles(int cycles)
         _gcn_dsp_replace(_text "HLE restore schedules update" "  return read.IsReadMode() && read_ptr == data + size;"
           "  g_host.update_requested = true;\n  return read.IsReadMode() && read_ptr == data + size;")
       endif()
+      # Restoring a checkpoint must restore the pending-work latch too. A new
+      # update after load changes the next hardware deadline and guest IRQ order.
+      _gcn_dsp_replace(_text "HLE pending work checkpoint" "  p.Do(g_host.interrupt_pending);"
+        "  p.Do(g_host.update_requested);\n  p.Do(g_host.interrupt_pending);")
+      _gcn_dsp_replace(_text "HLE restore keeps pending work" "  g_host.update_requested = true;\n  return read.IsReadMode() && read_ptr == data + size;"
+        "  return read.IsReadMode() && read_ptr == data + size;")
       set(_text "#include <cstdint>\nbool gcnllr_dsp_hle_wii = false;\nconst std::uint8_t* gcnllr_dsp_hle_drom = nullptr;\nstd::uint32_t gcnllr_dsp_hle_drom_size = 0;\n${_text}")
     elseif(_name STREQUAL "dsp_adapter.cpp")
       file(READ "${_source}" _text)

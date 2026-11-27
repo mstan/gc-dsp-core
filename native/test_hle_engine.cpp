@@ -86,6 +86,21 @@ void exercise(bool wii,bool supplied_coefficients=true) {
         need(read()==0x8071feed,"DSP ROM initial mail changed");
         need(mail(0x1234abcd),"DSP ROM ping rejected");need(read()==0xfeee9234,"DSP ROM high-half/status echo changed");
         need(gcn_dsp_engine_run(engine,1024),"DSP ROM update failed");
+        need(!gcn_dsp_engine_update_pending(engine),"Drained ROM unexpectedly has pending work");
+        uint8_t* idle_snapshot=nullptr;size_t idle_size=0;
+        need(gcn_dsp_engine_capture(engine,&idle_snapshot,&idle_size),"Idle snapshot failed");
+        need(gcn_dsp_engine_write_control(engine,0x0800) && gcn_dsp_engine_update_pending(engine),
+             "Control write did not schedule work");
+        need(gcn_dsp_engine_restore(engine,idle_snapshot,idle_size),"Idle restore failed");
+        std::free(idle_snapshot);
+        need(!gcn_dsp_engine_update_pending(engine),"Restore invented DSP work");
+        need(gcn_dsp_engine_write_control(engine,0x0800),"Pending snapshot setup failed");
+        uint8_t* pending_snapshot=nullptr;size_t pending_size=0;
+        need(gcn_dsp_engine_capture(engine,&pending_snapshot,&pending_size),"Pending snapshot failed");
+        need(gcn_dsp_engine_run(engine,1024) && !gcn_dsp_engine_update_pending(engine),"Pending work did not drain");
+        need(gcn_dsp_engine_restore(engine,pending_snapshot,pending_size),"Pending restore failed");
+        std::free(pending_snapshot);
+        need(gcn_dsp_engine_update_pending(engine),"Restore lost pending DSP work");
         const auto stats=gcn_dsp_engine_stats(engine);need(stats.provider==1 && !stats.failed && !stats.interpreter_instructions && !stats.misses,"DSP HLE silently executed interpreter");
         need(gcn_dsp_engine_write_mail(engine,false,0x9234),"Snapshot partial mail rejected");
         uint8_t* snapshot=nullptr;size_t snapshot_size=0;
