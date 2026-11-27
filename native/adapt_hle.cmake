@@ -49,6 +49,11 @@ function(gcnllr_adapt_dsp_rom target)
     elseif(_source MATCHES "/Core/HW/DSPHLE/UCodes/UCodes\\.cpp$")
       math(EXPR _ucodes_count "${_ucodes_count}+1")
       file(READ "${_source}" _ucodes)
+      # NextUCodeInfo has ABI padding after iram_startpc. Serializing the
+      # aggregate leaks allocator bytes into snapshots and peer digests.
+      # Current-build state has no backward-format compatibility contract.
+      _gcn_dsp_replace(_ucodes "HLE upload state fields" "  p.Do(m_next_ucode);"
+        "  p.Do(m_next_ucode.mram_dest_addr);\n  p.Do(m_next_ucode.mram_size);\n  p.Do(m_next_ucode.mram_dram_addr);\n  p.Do(m_next_ucode.iram_mram_addr);\n  p.Do(m_next_ucode.iram_size);\n  p.Do(m_next_ucode.iram_dest);\n  p.Do(m_next_ucode.iram_startpc);\n  p.Do(m_next_ucode.dram_mram_addr);\n  p.Do(m_next_ucode.dram_size);\n  p.Do(m_next_ucode.dram_dest);")
       set(_anchor "  default:\n    if (wii)")
       string(FIND "${_ucodes}" "${_anchor}" _at)
       if(_at EQUAL -1)

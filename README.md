@@ -41,3 +41,10 @@ original DSP ROM and coefficient data.
 Consumers must qualify the actual task protocol, interrupts and PCM against
 their separate LLE build; ROM-mail and memory-bank unit checks alone do not
 establish title compatibility.
+
+HLE snapshot upload descriptors serialize each semantic field. The donor
+aggregate contains ABI padding after the IRAM start PC; copying that padding
+made equal fresh engines produce different state hashes. The explicit
+`gcn_dsp_hle_state_fields_test` target exercises the actual adapted serializer
+with poisoned padding, all upload fields and restore. State files remain
+build-specific; no older-format migration is provided.
